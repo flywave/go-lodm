@@ -122,6 +122,8 @@ type FlagType uint32
 const (
 	PTEXTURE FlagType = 0x1
 	CORTO    FlagType = 0x2
+	DRACO    FlagType = 0x4
+	TILE     FlagType = 0x8
 )
 
 type Signature struct {
@@ -142,7 +144,11 @@ func (s *Signature) HasPTextures() bool {
 }
 
 func (s *Signature) IsCompressed() bool {
-	return (s.Flags & CORTO) > 0
+	return (s.Flags & (CORTO | DRACO)) > 0
+}
+
+func (s *Signature) IsTile() bool {
+	return ((s.Flags | TILE) > 0)
 }
 
 const (
@@ -167,7 +173,8 @@ type Header struct {
 	NFeatures  uint32
 	Sphere     Sphere
 	Matrix     vec3.T
-	Padding    [92]byte
+	Tile       [3]uint32
+	Padding    [80]byte
 }
 
 func (m *Header) CalcInstanceId(node uint32) uint32 {

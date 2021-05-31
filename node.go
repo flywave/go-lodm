@@ -16,6 +16,22 @@ type NodeMesh struct {
 	Colors    [][4]byte
 }
 
+func (m *NodeMesh) HasFace() bool {
+	return len(m.Faces) > 0
+}
+
+func (m *NodeMesh) HasTexcoord() bool {
+	return len(m.Texcoords) > 0
+}
+
+func (m *NodeMesh) HasNormal() bool {
+	return len(m.Normals) > 0
+}
+
+func (m *NodeMesh) HasColor() bool {
+	return len(m.Colors) > 0
+}
+
 type Node struct {
 	Offset      uint32
 	NVert       uint16

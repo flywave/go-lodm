@@ -4,15 +4,12 @@ import (
 	"encoding/binary"
 	"io"
 
-	"github.com/flywave/go3d/quaternion"
-	"github.com/flywave/go3d/vec3"
+	"github.com/flywave/go3d/mat4"
 )
 
 type Instance struct {
-	ID       uint32
-	Position vec3.T
-	Scale    [3]float32
-	Rotate   quaternion.T
+	ID  []uint64
+	Mat []mat4.T
 }
 
 type InstanceNode struct {

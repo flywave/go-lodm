@@ -12,7 +12,7 @@ type FeatureData string
 type Feature struct {
 	Offset uint32
 	Type   uint32
-	ID     uint32
+	ID     uint64
 	Sphere [4]float32
 	Box    vec3.Box
 }
