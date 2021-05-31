@@ -8,14 +8,13 @@ import (
 )
 
 type Instance struct {
-	ID  []uint64
-	Mat []mat4.T
+	InstanceID []uint64
+	Mat        []mat4.T
 }
 
 type InstanceNode struct {
 	Node
-	EastNorthUp uint16
-	NInstance   uint16
+	NInstance uint32
 }
 
 func (m *InstanceNode) CalcSize() int64 {
