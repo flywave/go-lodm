@@ -154,10 +154,12 @@ func (s *Signature) IsTile() bool {
 
 const (
 	CurrentVersion = 0
+	HeaderSize     = 256
 )
 
 var (
-	MAGIC_STR = []byte("fwlm")
+	MAGIC_STR         = []byte("fwlm")
+	MAGIC_BYTE uint32 = 0x6d6c7766
 )
 
 type Header struct {

@@ -196,12 +196,16 @@ type Node struct {
 	FirstPatch  uint32
 }
 
+func (m *Node) address() int64 {
+	return int64(m.Offset * LM_PADDING)
+}
+
 func (m *Node) TightSphere() Sphere {
 	return Sphere{m.Sphere[0], m.Sphere[1], m.Sphere[2], m.TightRadius}
 }
 
 func (m *Node) CalcSize() int64 {
-	return int64(binary.Size(Feature{}))
+	return int64(binary.Size(*m))
 }
 
 func (m *Node) Read(reader io.Reader) error {

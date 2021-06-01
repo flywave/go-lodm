@@ -73,7 +73,7 @@ func (m *InstanceMesh) Write(writer io.Writer, node *InstanceNode, header *Heade
 	return nil
 }
 
-func (m *InstanceMesh) getInstanceRaw() []byte {
+func (m *InstanceMesh) getInstanceRaw() ([]byte, error) {
 	si := (len(m.InstanceID) * 4) + (len(m.InstanceMat) * 16 * 4)
 	ret := make([]byte, si)
 	writer := bytes.NewBuffer(ret)
@@ -81,7 +81,7 @@ func (m *InstanceMesh) getInstanceRaw() []byte {
 	ninstance := len(m.InstanceID)
 
 	if err := binary.Write(writer, byteorder, m.InstanceID); err != nil {
-		return nil
+		return nil, err
 	}
 
 	var matsSlice []float32
@@ -91,18 +91,18 @@ func (m *InstanceMesh) getInstanceRaw() []byte {
 	matsHeader.Data = uintptr(unsafe.Pointer(&m.InstanceMat[0]))
 
 	if err := binary.Write(writer, byteorder, m.InstanceMat); err != nil {
-		return nil
+		return nil, err
 	}
-	return writer.Bytes()
+	return writer.Bytes(), nil
 }
 
-func (m *InstanceMesh) setInstanceRaw(node *InstanceNode, buf []byte) {
+func (m *InstanceMesh) setInstanceRaw(node *InstanceNode, buf []byte) error {
 	reader := bytes.NewBuffer(buf)
 
 	m.InstanceID = make([]uint32, node.NInstance)
 
 	if err := binary.Read(reader, byteorder, m.InstanceID); err != nil {
-		return
+		return err
 	}
 
 	m.InstanceMat = make([]mat4.T, node.NInstance)
@@ -114,8 +114,9 @@ func (m *InstanceMesh) setInstanceRaw(node *InstanceNode, buf []byte) {
 	matsHeader.Data = uintptr(unsafe.Pointer(&m.InstanceMat[0]))
 
 	if err := binary.Read(reader, byteorder, m.InstanceMat); err != nil {
-		return
+		return err
 	}
+	return nil
 }
 
 type InstanceNode struct {
@@ -125,7 +126,7 @@ type InstanceNode struct {
 }
 
 func (m *InstanceNode) CalcSize() int64 {
-	return int64(binary.Size(Feature{}))
+	return int64(binary.Size(*m))
 }
 
 func (m *InstanceNode) Read(reader io.Reader) error {

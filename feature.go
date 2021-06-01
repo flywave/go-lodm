@@ -18,8 +18,12 @@ type Feature struct {
 	Box    vec3.Box
 }
 
+func (m *Feature) address() int64 {
+	return int64(m.Offset * LM_PADDING)
+}
+
 func (m *Feature) CalcSize() int64 {
-	return int64(binary.Size(Feature{}))
+	return int64(binary.Size(*m))
 }
 
 func (m *Feature) Read(reader io.Reader) error {

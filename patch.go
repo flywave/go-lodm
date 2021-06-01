@@ -6,11 +6,11 @@ import (
 )
 
 type Patch struct {
-	Node   uint32
-	Offset uint32
-	TexID  uint32
-	MtlID  uint32
-	FeatID uint32
+	Node       uint32
+	VertOffset uint32
+	TexID      uint32
+	MtlID      uint32
+	FeatID     uint32
 }
 
 func (m *Patch) CalcSize() int64 {

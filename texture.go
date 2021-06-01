@@ -17,6 +17,10 @@ type Texture struct {
 	Mat    mat3.T
 }
 
+func (m *Texture) address() int64 {
+	return int64(m.Offset * LM_PADDING)
+}
+
 func (m *Texture) CalcSize() int64 {
 	return int64(binary.Size(*m))
 }

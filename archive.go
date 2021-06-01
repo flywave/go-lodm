@@ -3,25 +3,16 @@ package lodm
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
-	"image/jpeg"
-	"image/png"
 	"io"
 	"os"
 	"path"
-	"reflect"
-	"unsafe"
-
-	"github.com/flywave/go-corto"
-	"github.com/flywave/go-draco"
-
-	"github.com/flywave/go3d/vec2"
-	"github.com/flywave/go3d/vec3"
 )
 
 const (
-	LM_PADDING   = 256
-	JPEG_QUALITY = 70
+	LM_PADDING      uint32 = 256
+	LM_JPEG_QUALITY int    = 70
 )
 
 var byteorder = binary.LittleEndian
@@ -39,10 +30,19 @@ type Archive struct {
 	TextureImages []TextureImage
 	FeatureDatas  []FeatureData
 
-	reader io.ReadSeekCloser
-	path   string
-	size   int
-	nroots uint32
+	reader  io.ReadSeekCloser
+	path    string
+	size    int
+	nroots  uint32
+	setting *CompressSetting
+}
+
+func NewArchive(h Header, setting *CompressSetting) *Archive {
+	return &Archive{Header: h, setting: setting}
+}
+
+func (a *Archive) headerSize() int {
+	return HeaderSize
 }
 
 func (a *Archive) indexSize() int {
@@ -117,13 +117,22 @@ func (a *Archive) loadIndex() error {
 	return nil
 }
 
-func (a *Archive) readNode(n uint32) []byte {
+func (a *Archive) readNode(n uint32) ([]byte, error) {
+	if n >= uint32(len(a.Nodes)-1) {
+		return nil, errors.New("node index error")
+	}
 	node := &a.Nodes[n]
-	size := node.Offset - a.Instances[n+1].Offset
-	a.reader.Seek(int64(node.Offset), os.SEEK_SET)
+	size := uint32(node.address()) - uint32(a.Instances[n+1].address())
+	_, err := a.reader.Seek(node.address(), os.SEEK_SET)
+	if err != nil {
+		return nil, err
+	}
 	ret := make([]byte, size)
-	a.reader.Read(ret)
-	return ret
+	_, err = a.reader.Read(ret)
+	if err != nil {
+		return nil, err
+	}
+	return ret, nil
 }
 
 func (a *Archive) setNode(n uint32, buf []byte) error {
@@ -131,11 +140,11 @@ func (a *Archive) setNode(n uint32, buf []byte) error {
 	node := &a.Nodes[n]
 	nextnode := &a.Nodes[n+1]
 
-	offset := node.Offset
+	offset := node.address()
 
 	d := a.NodeMeshs[n]
 
-	compressedSize := nextnode.Offset - offset
+	compressedSize := nextnode.address() - offset
 
 	if !sign.IsCompressed() {
 		reader := bytes.NewBuffer(buf)
@@ -152,13 +161,22 @@ func (a *Archive) setNode(n uint32, buf []byte) error {
 	return nil
 }
 
-func (a *Archive) readInstance(i uint32) []byte {
+func (a *Archive) readInstance(i uint32) ([]byte, error) {
+	if i >= uint32(len(a.Instances)-1) {
+		return nil, errors.New("node index error")
+	}
 	ins := &a.Instances[i]
-	size := ins.Offset - a.Instances[i+1].Offset
-	a.reader.Seek(int64(ins.Offset), os.SEEK_SET)
+	size := ins.address() - a.Instances[i+1].address()
+	_, err := a.reader.Seek(ins.address(), os.SEEK_SET)
+	if err != nil {
+		return nil, err
+	}
 	ret := make([]byte, size)
-	a.reader.Read(ret)
-	return ret
+	_, err = a.reader.Read(ret)
+	if err != nil {
+		return nil, err
+	}
+	return ret, nil
 }
 
 func (a *Archive) setInstanceNode(n uint32, buf []byte) error {
@@ -166,11 +184,11 @@ func (a *Archive) setInstanceNode(n uint32, buf []byte) error {
 	node := &a.Instances[n]
 	nextnode := &a.Instances[n+1]
 
-	offset := node.Offset
+	offset := node.address()
 
 	d := a.InstanceMeshs[n]
 
-	compressedSize := nextnode.Offset - offset
+	compressedSize := nextnode.address() - offset
 
 	if !sign.IsCompressed() {
 		reader := bytes.NewBuffer(buf)
@@ -188,14 +206,23 @@ func (a *Archive) setInstanceNode(n uint32, buf []byte) error {
 	return nil
 }
 
-func (a *Archive) readTexture(p uint32) []byte {
+func (a *Archive) readTexture(p uint32) ([]byte, error) {
+	if p >= uint32(len(a.Patchs)-1) {
+		return nil, errors.New("patch index error")
+	}
 	t := a.Patchs[p].TexID
 	tex := &a.Textures[t]
-	size := tex.Offset - a.Features[t+1].Offset
-	a.reader.Seek(int64(tex.Offset), os.SEEK_SET)
+	size := tex.address() - a.Features[t+1].address()
+	_, err := a.reader.Seek(tex.address(), os.SEEK_SET)
+	if err != nil {
+		return nil, err
+	}
 	ret := make([]byte, size)
-	a.reader.Read(ret)
-	return ret
+	_, err = a.reader.Read(ret)
+	if err != nil {
+		return nil, err
+	}
+	return ret, nil
 }
 
 func (a *Archive) setPatchTexture(p uint32, buf []byte) error {
@@ -211,13 +238,22 @@ func (a *Archive) setPatchTexture(p uint32, buf []byte) error {
 	return nil
 }
 
-func (a *Archive) readFeature(f uint32) []byte {
+func (a *Archive) readFeature(f uint32) ([]byte, error) {
+	if f >= uint32(len(a.Features)-1) {
+		return nil, errors.New("feature index error")
+	}
 	feat := &a.Features[f]
-	size := feat.Offset - a.Features[f+1].Offset
-	a.reader.Seek(int64(feat.Offset), os.SEEK_SET)
+	size := feat.address() - a.Features[f+1].address()
+	_, err := a.reader.Seek(feat.address(), os.SEEK_SET)
+	if err != nil {
+		return nil, err
+	}
 	ret := make([]byte, size)
-	a.reader.Read(ret)
-	return ret
+	_, err = a.reader.Read(ret)
+	if err != nil {
+		return nil, err
+	}
+	return ret, nil
 }
 
 func (a *Archive) setFeature(f uint32, buf []byte) error {
@@ -225,30 +261,83 @@ func (a *Archive) setFeature(f uint32, buf []byte) error {
 	return nil
 }
 
-func (a *Archive) saveNodes(writer io.Writer) error {
-	for i := 0; i < len(a.NodeMeshs); i++ {
-
+func (a *Archive) saveNodes(writer io.Writer, offset *int64) error {
+	for n := 0; n < len(a.Nodes); n++ {
+		var nodeData NodeData
+		if a.Header.Sign.IsCompressed() && a.setting != nil {
+			nodeData = CompressNode(a.Header, &a.Nodes[n], &a.NodeMeshs[n], a.Patchs, a.setting)
+		} else {
+			buf := &bytes.Buffer{}
+			a.NodeMeshs[n].Write(buf, &a.Nodes[n], &a.Header)
+			nodeData = buf.Bytes()
+			padding := calcPadding(uint32(len(nodeData)), LM_PADDING)
+			if padding != 0 {
+				for i := 0; i < int(padding); i++ {
+					nodeData = append(nodeData, byte(0))
+				}
+			}
+		}
+		n, err := writer.Write(nodeData)
+		if err != nil {
+			return err
+		}
+		a.Nodes[n].Offset = uint32(*offset) / LM_PADDING
+		*offset += int64(n)
 	}
 	return nil
 }
 
-func (a *Archive) saveInstances(writer io.Writer) error {
-	for i := 0; i < len(a.InstanceMeshs); i++ {
-
+func (a *Archive) saveInstances(writer io.Writer, offset *int64) error {
+	for n := 0; n < len(a.Instances); n++ {
+		var nodeData NodeData
+		var err error
+		if a.Header.Sign.IsCompressed() && a.setting != nil {
+			nodeData, err = CompressInstanceNode(a.Header, &a.Instances[n], &a.InstanceMeshs[n], a.Patchs, a.setting)
+			if err != nil {
+				return err
+			}
+		} else {
+			buf := &bytes.Buffer{}
+			a.InstanceMeshs[n].Write(buf, &a.Instances[n], &a.Header)
+			nodeData = buf.Bytes()
+			padding := calcPadding(uint32(len(nodeData)), LM_PADDING)
+			if padding != 0 {
+				for i := 0; i < int(padding); i++ {
+					nodeData = append(nodeData, byte(0))
+				}
+			}
+		}
+		n, err := writer.Write(nodeData)
+		if err != nil {
+			return err
+		}
+		a.Instances[n].Offset = uint32(*offset) / LM_PADDING
+		*offset += int64(n)
 	}
 	return nil
 }
 
-func (a *Archive) saveTextures(writer io.Writer) error {
-	for i := 0; i < len(a.TextureImages); i++ {
-
+func (a *Archive) saveTextures(writer io.Writer, offset *int64) error {
+	for i := 0; i < len(a.Textures); i++ {
+		texData := compressTexture(a.Header, a.TextureImages[i])
+		n, err := writer.Write(texData)
+		if err != nil {
+			return err
+		}
+		a.Textures[n].Offset = uint32(*offset) / LM_PADDING
+		*offset += int64(n)
 	}
 	return nil
 }
 
-func (a *Archive) saveFeatures(writer io.Writer) error {
-	for i := 0; i < len(a.FeatureDatas); i++ {
-
+func (a *Archive) saveFeatures(writer io.Writer, offset *int64) error {
+	for i := 0; i < len(a.Features); i++ {
+		n, err := writer.Write(a.FeatureDatas[i])
+		if err != nil {
+			return err
+		}
+		a.Features[n].Offset = uint32(*offset) / LM_PADDING
+		*offset += int64(n)
 	}
 	return nil
 }
@@ -321,6 +410,7 @@ func (a *Archive) Open(path string) error {
 
 func (a *Archive) Save(path string) error {
 	writer, err := os.Open(path)
+	defer writer.Close()
 	if err != nil {
 		return err
 	}
@@ -335,26 +425,33 @@ func (a *Archive) Save(path string) error {
 	offset, _ := writer.Seek(0, os.SEEK_CUR)
 	padding := calcPadding(uint32(offset), LM_PADDING)
 	tmp := make([]byte, padding)
-	_, err = writer.Write(tmp)
+	n, err := writer.Write(tmp)
 	if err != nil {
 		return err
 	}
-	err = a.saveNodes(writer)
+	offset += int64(n)
+	err = a.saveNodes(writer, &offset)
 	if err != nil {
 		return err
 	}
-	err = a.saveInstances(writer)
+	err = a.saveInstances(writer, &offset)
 	if err != nil {
 		return err
 	}
-	err = a.saveTextures(writer)
+	err = a.saveTextures(writer, &offset)
 	if err != nil {
 		return err
 	}
-	err = a.saveFeatures(writer)
+	err = a.saveFeatures(writer, &offset)
 	if err != nil {
 		return err
 	}
+	writer.Seek(256, os.SEEK_SET)
+	err = a.saveIndex(writer)
+	if err != nil {
+		return err
+	}
+	writer.Sync()
 	return nil
 }
 
@@ -540,7 +637,7 @@ func (a *Archive) genNodeObj(n uint32, instance bool) string {
 				} else {
 					buffer.WriteString(fmt.Sprintf("usemtl node_%v_%v_%v\n", n, t, m))
 				}
-				for k := start; k < int(patch.Offset); k++ {
+				for k := start; k < int(patch.VertOffset); k++ {
 					fline := "f "
 					fline += fmt.Sprintf("%d", (d.Faces[k][0] + 1))
 					if sign.Vertex.HasTextures() {
@@ -586,7 +683,7 @@ func (a *Archive) genNodeObj(n uint32, instance bool) string {
 
 					buffer.WriteString(fline)
 				}
-				start = int(patch.Offset)
+				start = int(patch.VertOffset)
 			}
 		}
 	}
@@ -657,7 +754,10 @@ func (a *Archive) genNodeMtl(n uint32, instance bool) string {
 }
 
 func (a *Archive) Close() error {
-	return a.reader.Close()
+	if a.reader != nil {
+		return a.reader.Close()
+	}
+	return nil
 }
 
 func (a *Archive) LoadAll() error {
@@ -680,8 +780,11 @@ func (a *Archive) LoadNode(n uint32) error {
 	if !a.NodeMeshs[n].Empty() {
 		return nil
 	}
-	nbuf := a.readNode(n)
-	err := a.setNode(n, nbuf)
+	nbuf, err := a.readNode(n)
+	if err != nil {
+		return err
+	}
+	err = a.setNode(n, nbuf)
 	if err != nil {
 		return err
 	}
@@ -690,14 +793,24 @@ func (a *Archive) LoadNode(n uint32) error {
 	last_patch := a.Nodes[n+1].FirstPatch - 1
 
 	for p := node.FirstPatch; p < last_patch; p++ {
-		tbuf := a.readTexture(p)
-		a.setPatchTexture(p, tbuf)
-
+		tbuf, err := a.readTexture(p)
+		if err != nil {
+			return err
+		}
+		err = a.setPatchTexture(p, tbuf)
+		if err != nil {
+			return err
+		}
 		fid := a.Patchs[p].FeatID
-		fbuf := a.readFeature(fid)
-		a.setFeature(fid, fbuf)
+		fbuf, err := a.readFeature(fid)
+		if err != nil {
+			return err
+		}
+		err = a.setFeature(fid, fbuf)
+		if err != nil {
+			return err
+		}
 	}
-
 	return nil
 }
 
@@ -705,8 +818,11 @@ func (a *Archive) LoadInstance(n uint32) error {
 	if !a.InstanceMeshs[n].Empty() {
 		return nil
 	}
-	nbuf := a.readInstance(n)
-	err := a.setInstanceNode(n, nbuf)
+	nbuf, err := a.readInstance(n)
+	if err != nil {
+		return err
+	}
+	err = a.setInstanceNode(n, nbuf)
 	if err != nil {
 		return err
 	}
@@ -715,309 +831,23 @@ func (a *Archive) LoadInstance(n uint32) error {
 	last_patch := a.Instances[n+1].FirstPatch - 1
 
 	for p := node.FirstPatch; p < last_patch; p++ {
-		tbuf := a.readTexture(p)
-		a.setPatchTexture(p, tbuf)
-
+		tbuf, err := a.readTexture(p)
+		if err != nil {
+			return err
+		}
+		err = a.setPatchTexture(p, tbuf)
+		if err != nil {
+			return err
+		}
 		fid := a.Patchs[p].FeatID
-		fbuf := a.readFeature(fid)
-		a.setFeature(fid, fbuf)
-	}
-
-	return nil
-}
-
-type CompressSetting struct {
-	CoordQ     int
-	CoordBits  int
-	NormalBits int
-	UvBits     int
-	ColorBits  int
-}
-
-func CompressNode(header Header, node *Node, mesh *NodeMesh, patches []Patch, setting CompressSetting) NodeData {
-	buf := compressNodeMesh(header, node, mesh, patches, setting)
-	padding := calcPadding(uint32(len(buf)), LM_PADDING)
-	if padding == 0 {
-		return buf
-	}
-	for i := 0; i < int(padding); i++ {
-		buf = append(buf, byte(0))
-	}
-	return buf
-}
-
-func CompressInstanceNode(header Header, node *InstanceNode, mesh *InstanceMesh, patches []Patch, setting CompressSetting) NodeData {
-	buf := compressNodeMesh(header, &node.Node, &mesh.NodeMesh, patches, setting)
-	node.InstanceOffset = uint32(len(buf))
-	node.NInstance = uint32(len(mesh.InstanceID))
-	ibuf := mesh.getInstanceRaw()
-	buf = append(buf, ibuf...)
-	padding := calcPadding(uint32(len(buf)), LM_PADDING)
-	if padding == 0 {
-		return buf
-	}
-	for i := 0; i < int(padding); i++ {
-		buf = append(buf, byte(0))
-	}
-	return buf
-}
-
-func decompressNodeMesh(buf []byte, header Header, node *Node, mesh *NodeMesh) error {
-	sign := &header.Sign
-	if (sign.Flags & CORTO) > 0 {
-		ctx := &corto.DecoderContext{}
-		ctx.NFace = uint32(node.NFace)
-		ctx.NVert = uint32(node.NVert)
-		ctx.ColorsComponents = 4
-		ctx.Index16 = true
-		ctx.Normal16 = true
-		geom := corto.DecodeGeom(ctx, buf)
-		mesh.Verts = geom.Vertices[:]
-
-		mesh.Normals = make([][3]int16, len(geom.Normals16))
-		for i := range geom.Normals16 {
-			mesh.Normals[i] = [3]int16(geom.Normals16[i])
+		fbuf, err := a.readFeature(fid)
+		if err != nil {
+			return err
 		}
-		if len(geom.TexCoord) > 0 {
-			mesh.Texcoords = geom.TexCoord[:]
-		}
-		if len(geom.Indices16) > 0 {
-			mesh.Faces = make([][3]uint16, len(geom.Indices16))
-			for i := range geom.Indices16 {
-				mesh.Faces[i] = [3]uint16(geom.Indices16[i])
-			}
-		}
-		if len(geom.Colors) > 0 {
-			mesh.Colors = make([][4]byte, len(geom.Colors))
-			for i := range geom.Colors {
-				mesh.Colors[i] = [4]byte(geom.Colors[i])
-			}
-		}
-	} else {
-		if node.NFace == 0 {
-			m := draco.NewPointCloud()
-			denc := draco.NewDecoder()
-			err := denc.DecodePointCloud(m, buf)
-			if err != nil {
-				return err
-			}
-			posid := m.NamedAttributeID(draco.GAT_POSITION)
-
-			mesh.Verts = make([]vec3.T, node.NVert)
-
-			var vertsSlice []float32
-			vertsHeader := (*reflect.SliceHeader)((unsafe.Pointer(&vertsSlice)))
-			vertsHeader.Cap = int(node.NVert * 3)
-			vertsHeader.Len = int(node.NVert * 3)
-			vertsHeader.Data = uintptr(unsafe.Pointer(&mesh.Verts[0]))
-
-			m.AttrData(m.Attr(posid), vertsSlice)
-
-		} else {
-			m := draco.NewMesh()
-			d := draco.NewDecoder()
-			err := d.DecodeMesh(m, buf)
-			if err != nil {
-				return err
-			}
+		err = a.setFeature(fid, fbuf)
+		if err != nil {
+			return err
 		}
 	}
 	return nil
-}
-
-func compressNodeMesh(header Header, node *Node, mesh *NodeMesh, patches []Patch, setting CompressSetting) NodeData {
-	sig := header.Sign
-
-	if (sig.Flags & CORTO) > 0 {
-		ctx := corto.NewEncoderContext(setting.CoordQ)
-		if setting.CoordBits > 0 {
-			ctx.VertexBits = setting.CoordQ
-		}
-		ctx.NormBits = setting.NormalBits
-		ctx.UvBits = float32(setting.UvBits) / 512
-		ctx.ColorBits = [4]int{setting.ColorBits, setting.ColorBits, setting.ColorBits, setting.ColorBits}
-
-		geom := &corto.Geom{}
-
-		for p := 0; p < len(patches); p++ {
-			geom.Groups = append(geom.Groups, int(patches[p].Offset))
-		}
-
-		geom.Vertices = mesh.Verts[:]
-
-		if node.NFace != 0 {
-			geom.Indices16 = make([]corto.Face16, node.NFace)
-			for i := 0; i < int(node.NFace); i++ {
-				geom.Indices16[i] = corto.Face16{mesh.Faces[i][0], mesh.Faces[i][1], mesh.Faces[i][2]}
-			}
-		}
-
-		if sig.Vertex.HasNormals() {
-			geom.Normals16 = make([]corto.Normal16, node.NVert)
-			for i := 0; i < int(node.NVert); i++ {
-				geom.Normals16[i] = corto.Normal16{mesh.Normals[i][0], mesh.Normals[i][1], mesh.Normals[i][2]}
-			}
-		}
-
-		if sig.Vertex.HasColors() {
-			geom.Colors = make([]corto.Color, node.NVert)
-			for i := 0; i < int(node.NVert); i++ {
-				geom.Colors[i] = corto.Color{mesh.Colors[i][0], mesh.Colors[i][1], mesh.Colors[i][2], mesh.Colors[i][3]}
-			}
-		}
-
-		if sig.Vertex.HasTextures() {
-			geom.TexCoord = mesh.Texcoords[:]
-		}
-
-		buf := corto.EncodeGeom(ctx, geom)
-		return buf
-	} else if (sig.Flags & DRACO) > 0 {
-		enc := draco.NewEncoder()
-
-		if setting.CoordBits > 0 {
-			enc.SetAttributeQuantization(draco.GAT_POSITION, int32(setting.CoordBits))
-		}
-		if setting.NormalBits > 0 {
-			enc.SetAttributeQuantization(draco.GAT_NORMAL, int32(setting.NormalBits))
-		}
-		if setting.UvBits > 0 {
-			enc.SetAttributeQuantization(draco.GAT_TEX_COORD, int32(setting.UvBits))
-		}
-		if setting.ColorBits > 0 {
-			enc.SetAttributeQuantization(draco.GAT_COLOR, int32(setting.ColorBits))
-		}
-
-		if node.NFace == 0 {
-			builder := draco.NewPointCloudBuilder()
-			builder.Start(int(node.NVert))
-
-			builder.SetAttribute(int(node.NVert), mesh.Verts[:], draco.GAT_POSITION)
-
-			if sig.Vertex.HasNormals() {
-				builder.SetAttribute(int(node.NVert), mesh.Normals[:], draco.GAT_NORMAL)
-			}
-
-			if sig.Vertex.HasColors() {
-				builder.SetAttribute(int(node.NVert), mesh.Colors[:], draco.GAT_COLOR)
-			}
-			pc := builder.GetPointCloud()
-			_, buf := enc.EncodePointCloud(pc)
-			return buf
-		} else {
-			builder := draco.NewMeshBuilder()
-			size := int(node.NFace)
-
-			builder.Start(size)
-
-			face_points := make([]vec3.T, size*3)
-
-			var face_normals [][3]int16
-			if sig.Vertex.HasNormals() {
-				face_normals = make([][3]int16, size*3)
-			}
-			var face_colors [][4]byte
-			if sig.Vertex.HasColors() {
-				face_colors = make([][4]byte, size*3)
-			}
-			var face_texcoords []vec2.T
-			if sig.Vertex.HasTextures() {
-				face_texcoords = make([]vec2.T, size*3)
-			}
-
-			for i := range mesh.Faces {
-				face_points[i*3] = mesh.Verts[int(mesh.Faces[i][0])]
-				face_points[i*3+1] = mesh.Verts[int(mesh.Faces[i][1])]
-				face_points[i*3+2] = mesh.Verts[int(mesh.Faces[i][2])]
-				if sig.Vertex.HasNormals() {
-					face_normals[i*3] = mesh.Normals[int(mesh.Faces[i][0])]
-					face_normals[i*3+1] = mesh.Normals[int(mesh.Faces[i][1])]
-					face_normals[i*3+2] = mesh.Normals[int(mesh.Faces[i][2])]
-				}
-				if sig.Vertex.HasColors() {
-					face_colors[i*3] = mesh.Colors[int(mesh.Faces[i][0])]
-					face_colors[i*3+1] = mesh.Colors[int(mesh.Faces[i][1])]
-					face_colors[i*3+2] = mesh.Colors[int(mesh.Faces[i][2])]
-				}
-				if sig.Vertex.HasTextures() {
-					face_texcoords[i*3] = mesh.Texcoords[int(mesh.Faces[i][0])]
-					face_texcoords[i*3+1] = mesh.Texcoords[int(mesh.Faces[i][1])]
-					face_texcoords[i*3+2] = mesh.Texcoords[int(mesh.Faces[i][2])]
-				}
-			}
-
-			builder.SetAttribute(size, face_points[:], draco.GAT_POSITION)
-			if sig.Vertex.HasNormals() {
-				builder.SetAttribute(size, face_normals[:], draco.GAT_NORMAL)
-			}
-			if sig.Vertex.HasColors() {
-				builder.SetAttribute(size, face_colors[:], draco.GAT_COLOR)
-			}
-			if sig.Vertex.HasTextures() {
-				builder.SetAttribute(size, face_texcoords[:], draco.GAT_COLOR)
-			}
-
-			mesh := builder.GetMesh()
-			_, buf := enc.EncodeMesh(mesh)
-			return buf
-		}
-	}
-	return nil
-}
-
-func compressTexture(header Header, img TextureImage) TextureData {
-	sig := header.Sign
-	if (sig.Flags & PTPNG) > 0 {
-		buf := make([]byte, img.Bounds().Dx()*img.Bounds().Dy()*4)
-		writer := bytes.NewBuffer(buf)
-		err := png.Encode(writer, img)
-		if err != nil {
-			return nil
-		}
-		buf = writer.Bytes()
-		padding := calcPadding(uint32(len(buf)), LM_PADDING)
-		if padding == 0 {
-			return buf
-		}
-		for i := 0; i < int(padding); i++ {
-			buf = append(buf, byte(0))
-		}
-		return buf
-	} else if (sig.Flags & PTJPG) > 0 {
-		buf := make([]byte, img.Bounds().Dx()*img.Bounds().Dy()*4)
-		writer := bytes.NewBuffer(buf)
-		err := jpeg.Encode(writer, img, &jpeg.Options{Quality: JPEG_QUALITY})
-		if err != nil {
-			return nil
-		}
-		buf = writer.Bytes()
-		padding := calcPadding(uint32(len(buf)), LM_PADDING)
-		if padding == 0 {
-			return buf
-		}
-		for i := 0; i < int(padding); i++ {
-			buf = append(buf, byte(0))
-		}
-		return buf
-	}
-	return nil
-}
-
-func decompressTexture(header Header, data TextureData) (TextureImage, error) {
-	sig := header.Sign
-	if (sig.Flags & PTPNG) > 0 {
-		reader := bytes.NewBuffer(data)
-		image, err := png.Decode(reader)
-		if err != nil {
-			return nil, err
-		}
-		return image, nil
-	} else {
-		reader := bytes.NewBuffer(data)
-		image, err := jpeg.Decode(reader)
-		if err != nil {
-			return nil, err
-		}
-		return image, nil
-	}
 }
