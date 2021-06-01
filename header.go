@@ -120,10 +120,11 @@ func (e *FaceElement) HasData(i int) bool {
 type FlagType uint32
 
 const (
-	PTEXTURE FlagType = 0x1
-	CORTO    FlagType = 0x2
-	DRACO    FlagType = 0x4
-	TILE     FlagType = 0x8
+	PTJPG FlagType = 0x1
+	PTPNG FlagType = 0x2
+	CORTO FlagType = 0x4
+	DRACO FlagType = 0x8
+	TILE  FlagType = 0x16
 )
 
 type Signature struct {
@@ -140,7 +141,7 @@ func (s *Signature) UnsetFlag(f FlagType) {
 }
 
 func (s *Signature) HasPTextures() bool {
-	return ((s.Flags | PTEXTURE) > 0)
+	return ((s.Flags & (PTJPG | PTPNG)) > 0)
 }
 
 func (s *Signature) IsCompressed() bool {

@@ -7,12 +7,13 @@ import (
 	"github.com/flywave/go3d/vec3"
 )
 
-type FeatureData string
+type FeatureData []byte
 
 type Feature struct {
 	Offset uint32
 	Type   uint32
-	ID     uint64
+	ID     uint32
+	Node   uint32
 	Sphere [4]float32
 	Box    vec3.Box
 }

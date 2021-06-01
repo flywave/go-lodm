@@ -8,7 +8,9 @@ import (
 	"github.com/flywave/go3d/mat3"
 )
 
-type TextureData image.NRGBA
+type TextureImage image.Image
+
+type TextureData []byte
 
 type Texture struct {
 	Offset uint32

@@ -10,7 +10,7 @@ type Patch struct {
 	Offset uint32
 	TexID  uint32
 	MtlID  uint32
-	FeatID uint64
+	FeatID uint32
 }
 
 func (m *Patch) CalcSize() int64 {
