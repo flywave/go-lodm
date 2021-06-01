@@ -117,8 +117,13 @@ func (a *Archive) loadIndex() error {
 	return nil
 }
 
-func (a *Archive) loadNode(n uint32) []byte {
-	return nil
+func (a *Archive) readNode(n uint32) []byte {
+	node := &a.Nodes[n]
+	size := node.Offset - a.Instances[n+1].Offset
+	a.reader.Seek(int64(node.Offset), os.SEEK_SET)
+	ret := make([]byte, size)
+	a.reader.Read(ret)
+	return ret
 }
 
 func (a *Archive) setNode(n uint32, buf []byte) error {
@@ -139,13 +144,21 @@ func (a *Archive) setNode(n uint32, buf []byte) error {
 			return err
 		}
 	} else {
-		decompressNodeMesh(buf[:compressedSize], a.Header, node, &d)
+		err := decompressNodeMesh(buf[:compressedSize], a.Header, node, &d)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
-func (a *Archive) loadInstance(p uint32) []byte {
-	return nil
+func (a *Archive) readInstance(i uint32) []byte {
+	ins := &a.Instances[i]
+	size := ins.Offset - a.Instances[i+1].Offset
+	a.reader.Seek(int64(ins.Offset), os.SEEK_SET)
+	ret := make([]byte, size)
+	a.reader.Read(ret)
+	return ret
 }
 
 func (a *Archive) setInstanceNode(n uint32, buf []byte) error {
@@ -166,14 +179,23 @@ func (a *Archive) setInstanceNode(n uint32, buf []byte) error {
 			return err
 		}
 	} else {
-		decompressNodeMesh(buf[:compressedSize], a.Header, &node.Node, &d.NodeMesh)
+		err := decompressNodeMesh(buf[:compressedSize], a.Header, &node.Node, &d.NodeMesh)
+		if err != nil {
+			return err
+		}
 		d.setInstanceRaw(node, buf[node.InstanceOffset:])
 	}
 	return nil
 }
 
-func (a *Archive) loadTexture(p uint32) []byte {
-	return nil
+func (a *Archive) readTexture(p uint32) []byte {
+	t := a.Patchs[p].TexID
+	tex := &a.Textures[t]
+	size := tex.Offset - a.Features[t+1].Offset
+	a.reader.Seek(int64(tex.Offset), os.SEEK_SET)
+	ret := make([]byte, size)
+	a.reader.Read(ret)
+	return ret
 }
 
 func (a *Archive) setPatchTexture(p uint32, buf []byte) error {
@@ -189,8 +211,13 @@ func (a *Archive) setPatchTexture(p uint32, buf []byte) error {
 	return nil
 }
 
-func (a *Archive) loadFeature(f uint32) []byte {
-	return nil
+func (a *Archive) readFeature(f uint32) []byte {
+	feat := &a.Features[f]
+	size := feat.Offset - a.Features[f+1].Offset
+	a.reader.Seek(int64(feat.Offset), os.SEEK_SET)
+	ret := make([]byte, size)
+	a.reader.Read(ret)
+	return ret
 }
 
 func (a *Archive) setFeature(f uint32, buf []byte) error {
@@ -653,7 +680,7 @@ func (a *Archive) LoadNode(n uint32) error {
 	if !a.NodeMeshs[n].Empty() {
 		return nil
 	}
-	nbuf := a.loadNode(n)
+	nbuf := a.readNode(n)
 	err := a.setNode(n, nbuf)
 	if err != nil {
 		return err
@@ -663,11 +690,11 @@ func (a *Archive) LoadNode(n uint32) error {
 	last_patch := a.Nodes[n+1].FirstPatch - 1
 
 	for p := node.FirstPatch; p < last_patch; p++ {
-		tbuf := a.loadTexture(p)
+		tbuf := a.readTexture(p)
 		a.setPatchTexture(p, tbuf)
 
 		fid := a.Patchs[p].FeatID
-		fbuf := a.loadFeature(fid)
+		fbuf := a.readFeature(fid)
 		a.setFeature(fid, fbuf)
 	}
 
@@ -678,7 +705,7 @@ func (a *Archive) LoadInstance(n uint32) error {
 	if !a.InstanceMeshs[n].Empty() {
 		return nil
 	}
-	nbuf := a.loadInstance(n)
+	nbuf := a.readInstance(n)
 	err := a.setInstanceNode(n, nbuf)
 	if err != nil {
 		return err
@@ -688,11 +715,11 @@ func (a *Archive) LoadInstance(n uint32) error {
 	last_patch := a.Instances[n+1].FirstPatch - 1
 
 	for p := node.FirstPatch; p < last_patch; p++ {
-		tbuf := a.loadTexture(p)
+		tbuf := a.readTexture(p)
 		a.setPatchTexture(p, tbuf)
 
 		fid := a.Patchs[p].FeatID
-		fbuf := a.loadFeature(fid)
+		fbuf := a.readFeature(fid)
 		a.setFeature(fid, fbuf)
 	}
 
