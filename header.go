@@ -27,8 +27,8 @@ var (
 )
 
 type Attribute struct {
-	Type   byte
-	Number byte
+	Type   AttributeType
+	Number uint8
 }
 
 func (a Attribute) Size() int {
@@ -41,7 +41,7 @@ type Element struct {
 	Attributes [8]Attribute
 }
 
-func (e *Element) SetComponent(c int, a Attribute) {
+func (e *Element) SetComponent(c ComponentType, a Attribute) {
 	if c < 8 {
 		e.Attributes[c] = a
 	} else {

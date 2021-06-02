@@ -30,10 +30,9 @@ type Archive struct {
 	TextureImages []TextureImage
 	FeatureDatas  []FeatureData
 
-	reader    io.ReadSeekCloser
-	nroots    uint32
-	instances []uint32
-	setting   *CompressSetting
+	reader  io.ReadSeekCloser
+	nroots  uint32
+	setting *CompressSetting
 }
 
 func NewArchive(h Header, setting *CompressSetting) *Archive {

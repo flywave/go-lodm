@@ -167,6 +167,7 @@ func decompressNodeMesh(buf []byte, header Header, node *Node, mesh *NodeMesh) e
 
 				m.AttrData(m.Attr(posid), vertsSlice)
 			}
+
 			if header.Sign.Vertex.HasNormals() {
 				normid := m.NamedAttributeID(draco.GAT_NORMAL)
 
@@ -203,18 +204,21 @@ func decompressNodeMesh(buf []byte, header Header, node *Node, mesh *NodeMesh) e
 				return err
 			}
 			{
-				nface := m.NumFaces()
-				mesh.Faces = make([][3]uint16, nface/3)
+				node.NFace = uint16(m.NumFaces())
+				mesh.Faces = make([][3]uint16, node.NFace)
 
-				faces := make([]uint32, nface)
+				faces := make([]uint32, node.NFace*3)
 				faces = m.Faces(faces)
 
-				for i := 0; i < int(nface)/3; i++ {
+				for i := 0; i < int(node.NFace); i++ {
 					mesh.Faces[i] = [3]uint16{uint16(faces[i*3]), uint16(faces[i*3+1]), uint16(faces[i*3+2])}
 				}
 			}
+
 			{
 				posid := m.NamedAttributeID(draco.GAT_POSITION)
+
+				node.NVert = uint16(m.NumPoints())
 
 				mesh.Verts = make([]vec3.T, node.NVert)
 
@@ -226,6 +230,7 @@ func decompressNodeMesh(buf []byte, header Header, node *Node, mesh *NodeMesh) e
 
 				m.AttrData(m.Attr(posid), vertsSlice)
 			}
+
 			if header.Sign.Vertex.HasNormals() {
 				normid := m.NamedAttributeID(draco.GAT_NORMAL)
 
@@ -415,13 +420,12 @@ func compressNodeMesh(header Header, node *Node, mesh *NodeMesh, patches []Patch
 func compressTexture(header Header, img TextureImage) TextureData {
 	sig := header.Sign
 	if (sig.Flags & PTPNG) > 0 {
-		buf := make([]byte, img.Bounds().Dx()*img.Bounds().Dy()*4)
-		writer := bytes.NewBuffer(buf)
+		writer := &bytes.Buffer{}
 		err := png.Encode(writer, img)
 		if err != nil {
 			return nil
 		}
-		buf = writer.Bytes()
+		buf := writer.Bytes()
 		padding := calcPadding(uint32(len(buf)), LM_PADDING)
 		if padding == 0 {
 			return buf
@@ -431,13 +435,12 @@ func compressTexture(header Header, img TextureImage) TextureData {
 		}
 		return buf
 	} else if (sig.Flags & PTJPG) > 0 {
-		buf := make([]byte, img.Bounds().Dx()*img.Bounds().Dy()*4)
-		writer := bytes.NewBuffer(buf)
+		writer := &bytes.Buffer{}
 		err := jpeg.Encode(writer, img, &jpeg.Options{Quality: LM_JPEG_QUALITY})
 		if err != nil {
 			return nil
 		}
-		buf = writer.Bytes()
+		buf := writer.Bytes()
 		padding := calcPadding(uint32(len(buf)), LM_PADDING)
 		if padding == 0 {
 			return buf
