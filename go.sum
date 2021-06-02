@@ -6,6 +6,10 @@ github.com/flywave/go-corto v0.0.0-20210531064335-8ef56dac8ee8 h1:nUqgV0ocDpvVq2
 github.com/flywave/go-corto v0.0.0-20210531064335-8ef56dac8ee8/go.mod h1:SNuGsgE2y7gA1oHFZmynMXP22HHrUezCDApwn2PgjNk=
 github.com/flywave/go-corto v0.0.0-20210531073233-751bd673f0d7 h1:YGlxjyfE/zko1c1gTNJ6s/yTESy8yEAU8vKwTs6ejy0=
 github.com/flywave/go-corto v0.0.0-20210531073233-751bd673f0d7/go.mod h1:SNuGsgE2y7gA1oHFZmynMXP22HHrUezCDApwn2PgjNk=
+github.com/flywave/go-corto v0.0.0-20210601010704-ef9321cafc12 h1:ZZN3BY9w1nBz3EHGLvnLY+YpO+9vcG2gYFc5o59TnKo=
+github.com/flywave/go-corto v0.0.0-20210601010704-ef9321cafc12/go.mod h1:SNuGsgE2y7gA1oHFZmynMXP22HHrUezCDApwn2PgjNk=
+github.com/flywave/go-corto v0.0.0-20210602004709-7a02779b69af h1:0nI+d2fQbYOwPhE8mPqUB4GK/BA9IIQHs+5i9XTCyiI=
+github.com/flywave/go-corto v0.0.0-20210602004709-7a02779b69af/go.mod h1:SNuGsgE2y7gA1oHFZmynMXP22HHrUezCDApwn2PgjNk=
 github.com/flywave/go-draco v0.0.0-20210531075004-944b2c6043db h1:gfh5V4vMdIULckt56EIyBLHk7ZgDBYwEyS7k9b1ju3c=
 github.com/flywave/go-draco v0.0.0-20210531075004-944b2c6043db/go.mod h1:ouJ+A0y26I2NUYZNk701xmf1f+0SMOhdyfdmcWQD0sY=
 github.com/flywave/go-draco v0.0.0-20210531140347-d2e416d10265 h1:/jMtFJ4LYdndWJd/llL2lVj0xC21cwJclCX3XQjoiK8=

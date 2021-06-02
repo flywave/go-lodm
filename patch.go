@@ -7,10 +7,18 @@ import (
 
 type Patch struct {
 	Node       uint32
-	VertOffset uint32
+	FaceOffset uint32
 	TexID      uint32
 	MtlID      uint32
 	FeatID     uint32
+}
+
+func (m *Patch) SetNode(n uint32) {
+	m.Node = n
+}
+
+func (m *Patch) GetNode() uint32 {
+	return m.Node
 }
 
 func (m *Patch) CalcSize() int64 {

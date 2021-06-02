@@ -4,7 +4,7 @@ import (
 	"encoding/binary"
 	"io"
 
-	"github.com/flywave/go3d/vec3"
+	"github.com/flywave/go3d/mat4"
 )
 
 type AttributeType uint8
@@ -158,34 +158,31 @@ const (
 )
 
 var (
-	MAGIC_STR         = []byte("fwlm")
-	MAGIC_BYTE uint32 = 0x6d6c7766
+	MAGIC_BYTE         uint32 = 0x6d6c7766
+	INSTANCE_ID_OFFSET uint32 = 1 << 16
 )
 
 type Header struct {
-	Magic      uint32
-	Version    uint32
-	NVert      uint64
-	NFace      uint64
-	Sign       Signature
-	NNodes     uint32
-	NInstances uint32
-	NPatches   uint32
-	NTextures  uint32
-	NMaterials uint32
-	NFeatures  uint32
-	Sphere     Sphere
-	Matrix     vec3.T
-	Tile       [3]uint32
-	Padding    [80]byte
+	Magic          uint32
+	Version        uint32
+	NVert          uint64
+	NFace          uint64
+	Sign           Signature
+	NNodes         uint32
+	NInstanceNodes uint32
+	NInstances     uint32
+	NPatches       uint32
+	NTextures      uint32
+	NMaterials     uint32
+	NFeatures      uint32
+	Sphere         Sphere
+	Matrix         mat4.T
+	Tile           [3]uint32
+	Padding        [76]byte
 }
 
-func (m *Header) CalcInstanceId(node uint32) uint32 {
-	return node - m.NNodes
-}
-
-func (m *Header) CalcNodeId(insId uint32) uint32 {
-	return insId + m.NNodes
+func NewHeader(sign Signature) *Header {
+	return &Header{Magic: MAGIC_BYTE, Version: CurrentVersion, NVert: 0, NFace: 0, Sign: sign, NNodes: 0, NInstances: 0, NPatches: 0, NTextures: 0, NMaterials: 0, NFeatures: 0}
 }
 
 func (m *Header) CalcSize() int64 {

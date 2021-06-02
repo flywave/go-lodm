@@ -86,17 +86,22 @@ func calcPadding(offset, paddingUnit uint32) uint32 {
 	return padding
 }
 
+const (
+	LM_JPEG_QUALITY int = 70
+)
+
 type CompressSetting struct {
-	CoordQ     int
+	CoordQ     float32
 	CoordBits  int
 	NormalBits int
 	UvBits     int
 	ColorBits  int
+	AlphaBits  int
 }
 
-func NewCompressSetting() *CompressSetting {
-	return &CompressSetting{}
-}
+var (
+	DEFAULE_COMPRESS_SETTING = CompressSetting{CoordQ: 0, CoordBits: 0, NormalBits: 10, ColorBits: 6, AlphaBits: 5}
+)
 
 func CompressNode(header Header, node *Node, mesh *NodeMesh, patches []Patch, setting *CompressSetting) NodeData {
 	buf := compressNodeMesh(header, node, mesh, patches, setting)
@@ -108,25 +113,6 @@ func CompressNode(header Header, node *Node, mesh *NodeMesh, patches []Patch, se
 		buf = append(buf, byte(0))
 	}
 	return buf
-}
-
-func CompressInstanceNode(header Header, node *InstanceNode, mesh *InstanceMesh, patches []Patch, setting *CompressSetting) (NodeData, error) {
-	buf := compressNodeMesh(header, &node.Node, &mesh.NodeMesh, patches, setting)
-	node.InstanceOffset = uint32(len(buf))
-	node.NInstance = uint32(len(mesh.InstanceID))
-	ibuf, err := mesh.getInstanceRaw()
-	if err != nil {
-		return nil, err
-	}
-	buf = append(buf, ibuf...)
-	padding := calcPadding(uint32(len(buf)), LM_PADDING)
-	if padding == 0 {
-		return buf, nil
-	}
-	for i := 0; i < int(padding); i++ {
-		buf = append(buf, byte(0))
-	}
-	return buf, nil
 }
 
 func decompressNodeMesh(buf []byte, header Header, node *Node, mesh *NodeMesh) error {
@@ -292,7 +278,7 @@ func compressNodeMesh(header Header, node *Node, mesh *NodeMesh, patches []Patch
 	if (sig.Flags & CORTO) > 0 {
 		ctx := corto.NewEncoderContext(setting.CoordQ)
 		if setting.CoordBits > 0 {
-			ctx.VertexBits = setting.CoordQ
+			ctx.VertexBits = setting.CoordBits
 		}
 		ctx.NormBits = setting.NormalBits
 		ctx.UvBits = float32(setting.UvBits) / 512
@@ -301,7 +287,7 @@ func compressNodeMesh(header Header, node *Node, mesh *NodeMesh, patches []Patch
 		geom := &corto.Geom{}
 
 		for p := 0; p < len(patches); p++ {
-			geom.Groups = append(geom.Groups, int(patches[p].VertOffset))
+			geom.Groups = append(geom.Groups, int(patches[p].FaceOffset))
 		}
 
 		geom.Vertices = mesh.Verts[:]

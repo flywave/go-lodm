@@ -11,8 +11,7 @@ import (
 )
 
 const (
-	LM_PADDING      uint32 = 256
-	LM_JPEG_QUALITY int    = 70
+	LM_PADDING uint32 = 256
 )
 
 var byteorder = binary.LittleEndian
@@ -20,21 +19,21 @@ var byteorder = binary.LittleEndian
 type Archive struct {
 	Header        Header
 	Nodes         []Node
-	Instances     []InstanceNode
+	InstanceNodes []Node
+	Instances     []Instance
 	Patchs        []Patch
 	Textures      []Texture
 	Materials     []Material
 	Features      []Feature
 	NodeMeshs     []NodeMesh
-	InstanceMeshs []InstanceMesh
+	InstanceMeshs []NodeMesh
 	TextureImages []TextureImage
 	FeatureDatas  []FeatureData
 
-	reader  io.ReadSeekCloser
-	path    string
-	size    int
-	nroots  uint32
-	setting *CompressSetting
+	reader    io.ReadSeekCloser
+	nroots    uint32
+	instances []uint32
+	setting   *CompressSetting
 }
 
 func NewArchive(h Header, setting *CompressSetting) *Archive {
@@ -46,12 +45,13 @@ func (a *Archive) headerSize() int {
 }
 
 func (a *Archive) indexSize() int {
-	return int(a.Header.NNodes)*binary.Size(Node{}) + int(a.Header.NInstances)*binary.Size(InstanceNode{}) + int(a.Header.NPatches)*binary.Size(Patch{}) + int(a.Header.NTextures)*binary.Size(Texture{}) + int(a.Header.NMaterials)*binary.Size(Material{}) + int(a.Header.NFeatures)*binary.Size(Feature{})
+	return int(a.Header.NNodes)*binary.Size(Node{}) + int(a.Header.NInstanceNodes)*binary.Size(Node{}) + int(a.Header.NInstances)*binary.Size(Instance{}) + int(a.Header.NPatches)*binary.Size(Patch{}) + int(a.Header.NTextures)*binary.Size(Texture{}) + int(a.Header.NMaterials)*binary.Size(Material{}) + int(a.Header.NFeatures)*binary.Size(Feature{})
 }
 
 func (a *Archive) initIndex() {
 	a.Nodes = make([]Node, a.Header.NNodes)
-	a.Instances = make([]InstanceNode, a.Header.NInstances)
+	a.InstanceNodes = make([]Node, a.Header.NInstanceNodes)
+	a.Instances = make([]Instance, a.Header.NInstances)
 	a.Patchs = make([]Patch, a.Header.NPatches)
 	a.Textures = make([]Texture, a.Header.NTextures)
 	a.Materials = make([]Material, a.Header.NMaterials)
@@ -61,7 +61,8 @@ func (a *Archive) initIndex() {
 func (a *Archive) countRoots() {
 	a.nroots = uint32(len(a.Nodes))
 	for j := 0; j < int(a.nroots); j++ {
-		for i := int(a.Nodes[j].FirstPatch); i < int(a.Nodes[j+1].FirstPatch); i++ {
+		first_patch, last_patch := a.getNodePatchRange(uint32(j))
+		for i := int(first_patch); i < int(last_patch); i++ {
 			if a.Patchs[i].Node < uint32(a.nroots) {
 				a.nroots = uint32(a.Patchs[i].Node)
 			}
@@ -79,6 +80,12 @@ func (a *Archive) loadIndex() error {
 	var err error
 	for i := range a.Nodes {
 		err = a.Nodes[i].Read(a.reader)
+		if err != nil {
+			return err
+		}
+	}
+	for i := range a.InstanceNodes {
+		err = a.InstanceNodes[i].Read(a.reader)
 		if err != nil {
 			return err
 		}
@@ -117,13 +124,24 @@ func (a *Archive) loadIndex() error {
 	return nil
 }
 
+func (a *Archive) getNodePatchRange(n uint32) (uint32, uint32) {
+	node := &a.Nodes[n]
+	nextnode := &a.Nodes[n+1]
+	return node.FirstPatch, nextnode.FirstPatch - 1
+}
+
+func (a *Archive) getNodeMeshRange(n uint32) (int64, int64) {
+	node := &a.Nodes[n]
+	nextnode := &a.Nodes[n+1]
+	return node.address(), node.address() - nextnode.address()
+}
+
 func (a *Archive) readNode(n uint32) ([]byte, error) {
 	if n >= uint32(len(a.Nodes)-1) {
 		return nil, errors.New("node index error")
 	}
-	node := &a.Nodes[n]
-	size := uint32(node.address()) - uint32(a.Instances[n+1].address())
-	_, err := a.reader.Seek(node.address(), os.SEEK_SET)
+	offset, size := a.getNodeMeshRange(n)
+	_, err := a.reader.Seek(offset, os.SEEK_SET)
 	if err != nil {
 		return nil, err
 	}
@@ -161,13 +179,24 @@ func (a *Archive) setNode(n uint32, buf []byte) error {
 	return nil
 }
 
-func (a *Archive) readInstance(i uint32) ([]byte, error) {
-	if i >= uint32(len(a.Instances)-1) {
+func (a *Archive) getInstanceNodePatchRange(n uint32) (uint32, uint32) {
+	node := &a.InstanceNodes[n]
+	nextnode := &a.InstanceNodes[n+1]
+	return node.FirstPatch, nextnode.FirstPatch - 1
+}
+
+func (a *Archive) getInstanceNodeMeshRange(n uint32) (int64, int64) {
+	node := &a.InstanceNodes[n]
+	nextnode := &a.InstanceNodes[n+1]
+	return node.address(), node.address() - nextnode.address()
+}
+
+func (a *Archive) readInstanceNode(n uint32) ([]byte, error) {
+	if n >= uint32(len(a.InstanceNodes)-1) {
 		return nil, errors.New("node index error")
 	}
-	ins := &a.Instances[i]
-	size := ins.address() - a.Instances[i+1].address()
-	_, err := a.reader.Seek(ins.address(), os.SEEK_SET)
+	offset, size := a.getInstanceNodeMeshRange(n)
+	_, err := a.reader.Seek(offset, os.SEEK_SET)
 	if err != nil {
 		return nil, err
 	}
@@ -181,12 +210,12 @@ func (a *Archive) readInstance(i uint32) ([]byte, error) {
 
 func (a *Archive) setInstanceNode(n uint32, buf []byte) error {
 	sign := &a.Header.Sign
-	node := &a.Instances[n]
-	nextnode := &a.Instances[n+1]
+	node := &a.InstanceNodes[n]
+	nextnode := &a.InstanceNodes[n+1]
 
 	offset := node.address()
 
-	d := a.InstanceMeshs[n]
+	d := a.NodeMeshs[n]
 
 	compressedSize := nextnode.address() - offset
 
@@ -197,23 +226,27 @@ func (a *Archive) setInstanceNode(n uint32, buf []byte) error {
 			return err
 		}
 	} else {
-		err := decompressNodeMesh(buf[:compressedSize], a.Header, &node.Node, &d.NodeMesh)
+		err := decompressNodeMesh(buf[:compressedSize], a.Header, node, &d)
 		if err != nil {
 			return err
 		}
-		d.setInstanceRaw(node, buf[node.InstanceOffset:])
 	}
 	return nil
 }
 
-func (a *Archive) readTexture(p uint32) ([]byte, error) {
+func (a *Archive) getPatchTextureRange(p uint32) (int64, int64) {
+	t := a.Patchs[p].TexID
+	tex := &a.Textures[t]
+	nexttex := &a.Textures[t+1]
+	return tex.address(), tex.address() - nexttex.address()
+}
+
+func (a *Archive) readPatchTexture(p uint32) ([]byte, error) {
 	if p >= uint32(len(a.Patchs)-1) {
 		return nil, errors.New("patch index error")
 	}
-	t := a.Patchs[p].TexID
-	tex := &a.Textures[t]
-	size := tex.address() - a.Features[t+1].address()
-	_, err := a.reader.Seek(tex.address(), os.SEEK_SET)
+	offset, size := a.getPatchTextureRange(p)
+	_, err := a.reader.Seek(offset, os.SEEK_SET)
 	if err != nil {
 		return nil, err
 	}
@@ -238,13 +271,18 @@ func (a *Archive) setPatchTexture(p uint32, buf []byte) error {
 	return nil
 }
 
+func (a *Archive) getFeatureRange(f uint32) (int64, int64) {
+	feat := &a.Features[f]
+	nextfeat := &a.Features[f+1]
+	return feat.address(), feat.address() - nextfeat.address()
+}
+
 func (a *Archive) readFeature(f uint32) ([]byte, error) {
 	if f >= uint32(len(a.Features)-1) {
 		return nil, errors.New("feature index error")
 	}
-	feat := &a.Features[f]
-	size := feat.address() - a.Features[f+1].address()
-	_, err := a.reader.Seek(feat.address(), os.SEEK_SET)
+	offset, size := a.getFeatureRange(f)
+	_, err := a.reader.Seek(offset, os.SEEK_SET)
 	if err != nil {
 		return nil, err
 	}
@@ -258,6 +296,32 @@ func (a *Archive) readFeature(f uint32) ([]byte, error) {
 
 func (a *Archive) setFeature(f uint32, buf []byte) error {
 	a.FeatureDatas[f] = append(a.FeatureDatas[f], buf...)
+	return nil
+}
+
+func (a *Archive) saveInstanceNodes(writer io.Writer, offset *int64) error {
+	for n := 0; n < len(a.InstanceNodes); n++ {
+		var nodeData NodeData
+		if a.Header.Sign.IsCompressed() && a.setting != nil {
+			nodeData = CompressNode(a.Header, &a.InstanceNodes[n], &a.InstanceMeshs[n], a.Patchs, a.setting)
+		} else {
+			buf := &bytes.Buffer{}
+			a.InstanceMeshs[n].Write(buf, &a.InstanceNodes[n], &a.Header)
+			nodeData = buf.Bytes()
+			padding := calcPadding(uint32(len(nodeData)), LM_PADDING)
+			if padding != 0 {
+				for i := 0; i < int(padding); i++ {
+					nodeData = append(nodeData, byte(0))
+				}
+			}
+		}
+		n, err := writer.Write(nodeData)
+		if err != nil {
+			return err
+		}
+		a.InstanceNodes[n].Offset = uint32(*offset) / LM_PADDING
+		*offset += int64(n)
+	}
 	return nil
 }
 
@@ -282,36 +346,6 @@ func (a *Archive) saveNodes(writer io.Writer, offset *int64) error {
 			return err
 		}
 		a.Nodes[n].Offset = uint32(*offset) / LM_PADDING
-		*offset += int64(n)
-	}
-	return nil
-}
-
-func (a *Archive) saveInstances(writer io.Writer, offset *int64) error {
-	for n := 0; n < len(a.Instances); n++ {
-		var nodeData NodeData
-		var err error
-		if a.Header.Sign.IsCompressed() && a.setting != nil {
-			nodeData, err = CompressInstanceNode(a.Header, &a.Instances[n], &a.InstanceMeshs[n], a.Patchs, a.setting)
-			if err != nil {
-				return err
-			}
-		} else {
-			buf := &bytes.Buffer{}
-			a.InstanceMeshs[n].Write(buf, &a.Instances[n], &a.Header)
-			nodeData = buf.Bytes()
-			padding := calcPadding(uint32(len(nodeData)), LM_PADDING)
-			if padding != 0 {
-				for i := 0; i < int(padding); i++ {
-					nodeData = append(nodeData, byte(0))
-				}
-			}
-		}
-		n, err := writer.Write(nodeData)
-		if err != nil {
-			return err
-		}
-		a.Instances[n].Offset = uint32(*offset) / LM_PADDING
 		*offset += int64(n)
 	}
 	return nil
@@ -434,7 +468,7 @@ func (a *Archive) Save(path string) error {
 	if err != nil {
 		return err
 	}
-	err = a.saveInstances(writer, &offset)
+	err = a.saveInstanceNodes(writer, &offset)
 	if err != nil {
 		return err
 	}
@@ -486,7 +520,7 @@ func (a *Archive) Extract(path_ string) error {
 			return err
 		}
 	}
-	for n := uint32(0); n < a.Header.NInstances; n++ {
+	for n := uint32(0); n < a.Header.NInstanceNodes; n++ {
 		obj := a.genNodeObj(n, true)
 		objname := fmt.Sprintf("instance_%v.obj", n)
 
@@ -520,10 +554,9 @@ func (a *Archive) Extract(path_ string) error {
 }
 
 func (a *Archive) extractInstanceNodeTexture(path_ string, n uint32) error {
-	node := &a.Instances[n]
-	last_patch := a.Instances[n+1].FirstPatch - 1
+	first_patch, last_patch := a.getInstanceNodePatchRange(n)
 	t := uint32(0xffffffff)
-	for p := node.FirstPatch; p < last_patch; p++ {
+	for p := first_patch; p < last_patch; p++ {
 		t_ := a.Patchs[p].TexID
 		if t_ == 0xffffffff || t_ == t {
 			continue
@@ -550,10 +583,9 @@ func (a *Archive) extractInstanceNodeTexture(path_ string, n uint32) error {
 }
 
 func (a *Archive) extractNodeTexture(path_ string, n uint32) error {
-	node := &a.Nodes[n]
-	last_patch := a.Nodes[n+1].FirstPatch - 1
+	first_patch, last_patch := a.getNodePatchRange(n)
 	t := uint32(0xffffffff)
-	for p := node.FirstPatch; p < last_patch; p++ {
+	for p := first_patch; p < last_patch; p++ {
 		t_ := a.Patchs[p].TexID
 		if t_ == 0xffffffff || t_ == t {
 			continue
@@ -590,16 +622,18 @@ func (a *Archive) genNodeObj(n uint32, instance bool) string {
 	}
 	sign := &a.Header.Sign
 	var node *Node
+	var first_patch uint32
 	var last_patch uint32
 	var d *NodeMesh
+
 	if instance {
-		node = &a.Instances[n].Node
-		last_patch = a.Instances[n+1].FirstPatch - 1
-		d = &a.InstanceMeshs[n].NodeMesh
+		node = &a.InstanceNodes[n]
+		d = &a.InstanceMeshs[n]
+		first_patch, last_patch = a.getInstanceNodePatchRange(n)
 	} else {
 		node = &a.Nodes[n]
-		last_patch = a.Nodes[n+1].FirstPatch - 1
 		d = &a.NodeMeshs[n]
+		first_patch, last_patch = a.getNodePatchRange(n)
 	}
 
 	buffer.WriteString(fmt.Sprintf("# object %v\n", n))
@@ -624,7 +658,7 @@ func (a *Archive) genNodeObj(n uint32, instance bool) string {
 
 	if node.NFace > 0 {
 		start := 0
-		for p := node.FirstPatch; p < last_patch; p++ {
+		for p := first_patch; p < last_patch; p++ {
 			buffer.WriteString(fmt.Sprintf("g patch-%v\n", p))
 
 			patch := &a.Patchs[p]
@@ -637,7 +671,7 @@ func (a *Archive) genNodeObj(n uint32, instance bool) string {
 				} else {
 					buffer.WriteString(fmt.Sprintf("usemtl node_%v_%v_%v\n", n, t, m))
 				}
-				for k := start; k < int(patch.VertOffset); k++ {
+				for k := start; k < int(patch.FaceOffset); k++ {
 					fline := "f "
 					fline += fmt.Sprintf("%d", (d.Faces[k][0] + 1))
 					if sign.Vertex.HasTextures() {
@@ -683,7 +717,7 @@ func (a *Archive) genNodeObj(n uint32, instance bool) string {
 
 					buffer.WriteString(fline)
 				}
-				start = int(patch.VertOffset)
+				start = int(patch.FaceOffset)
 			}
 		}
 	}
@@ -695,17 +729,16 @@ func (a *Archive) genNodeMtl(n uint32, instance bool) string {
 	buffer.WriteString("# Wavefront material file\n")
 	buffer.WriteString("# Converted by flywave\n")
 
-	var node *Node
+	var first_patch uint32
 	var last_patch uint32
+
 	if instance {
-		node = &a.Instances[n].Node
-		last_patch = a.Instances[n+1].FirstPatch - 1
+		first_patch, last_patch = a.getInstanceNodePatchRange(n)
 	} else {
-		node = &a.Nodes[n]
-		last_patch = a.Nodes[n+1].FirstPatch - 1
+		first_patch, last_patch = a.getNodePatchRange(n)
 	}
 
-	for p := node.FirstPatch; p < last_patch; p++ {
+	for p := first_patch; p < last_patch; p++ {
 		t := a.Patchs[p].TexID
 		m := a.Patchs[p].MtlID
 
@@ -726,7 +759,6 @@ func (a *Archive) genNodeMtl(n uint32, instance bool) string {
 			if mat.Type == MTL_LAMBERT || mat.Type == MTL_PHONG {
 				buffer.WriteString(fmt.Sprintf("Ka %v %v %v \n", mat.Ambient[0]/255, mat.Ambient[1]/255, mat.Ambient[2]/255))
 			}
-
 			if mat.Type == MTL_PHONG {
 				buffer.WriteString(fmt.Sprintf("Ks %v %v %v \n", mat.Specular[0]/255, mat.Specular[1]/255, mat.Specular[2]/255))
 				buffer.WriteString(fmt.Sprintf("Ns %v \n", mat.Shininess))
@@ -761,13 +793,16 @@ func (a *Archive) Close() error {
 }
 
 func (a *Archive) LoadAll() error {
+	if a.reader != nil {
+		return errors.New("file not open!")
+	}
 	for n := uint32(0); n < a.Header.NNodes; n++ {
 		err := a.LoadNode(n)
 		if err != nil {
 			return err
 		}
 	}
-	for n := uint32(0); n < a.Header.NInstances; n++ {
+	for n := uint32(0); n < a.Header.NInstanceNodes; n++ {
 		err := a.LoadInstance(n)
 		if err != nil {
 			return err
@@ -777,6 +812,9 @@ func (a *Archive) LoadAll() error {
 }
 
 func (a *Archive) LoadNode(n uint32) error {
+	if a.reader != nil {
+		return errors.New("file not open!")
+	}
 	if !a.NodeMeshs[n].Empty() {
 		return nil
 	}
@@ -789,11 +827,10 @@ func (a *Archive) LoadNode(n uint32) error {
 		return err
 	}
 
-	node := &a.Nodes[n]
-	last_patch := a.Nodes[n+1].FirstPatch - 1
+	first_patch, last_patch := a.getNodePatchRange(n)
 
-	for p := node.FirstPatch; p < last_patch; p++ {
-		tbuf, err := a.readTexture(p)
+	for p := first_patch; p < last_patch; p++ {
+		tbuf, err := a.readPatchTexture(p)
 		if err != nil {
 			return err
 		}
@@ -815,10 +852,14 @@ func (a *Archive) LoadNode(n uint32) error {
 }
 
 func (a *Archive) LoadInstance(n uint32) error {
+	if a.reader != nil {
+		return errors.New("file not open!")
+	}
+
 	if !a.InstanceMeshs[n].Empty() {
 		return nil
 	}
-	nbuf, err := a.readInstance(n)
+	nbuf, err := a.readInstanceNode(n)
 	if err != nil {
 		return err
 	}
@@ -827,11 +868,10 @@ func (a *Archive) LoadInstance(n uint32) error {
 		return err
 	}
 
-	node := &a.Instances[n]
-	last_patch := a.Instances[n+1].FirstPatch - 1
+	first_patch, last_patch := a.getInstanceNodePatchRange(n)
 
-	for p := node.FirstPatch; p < last_patch; p++ {
-		tbuf, err := a.readTexture(p)
+	for p := first_patch; p < last_patch; p++ {
+		tbuf, err := a.readPatchTexture(p)
 		if err != nil {
 			return err
 		}

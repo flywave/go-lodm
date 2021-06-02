@@ -18,6 +18,14 @@ type Feature struct {
 	Box    vec3.Box
 }
 
+func (m *Feature) SetNode(n uint32) {
+	m.Node = n
+}
+
+func (m *Feature) GetNode() uint32 {
+	return m.Node
+}
+
 func (m *Feature) address() int64 {
 	return int64(m.Offset * LM_PADDING)
 }
