@@ -94,13 +94,13 @@ type CompressSetting struct {
 	CoordQ     float32
 	CoordBits  int
 	NormalBits int
+	ColorBits  [4]int
+	TexStep    float32
 	UvBits     int
-	ColorBits  int
-	AlphaBits  int
 }
 
 var (
-	DEFAULE_COMPRESS_SETTING = CompressSetting{CoordQ: 0, CoordBits: 1, NormalBits: 10, ColorBits: 6, AlphaBits: 5, UvBits: 1}
+	DEFAULE_COMPRESS_SETTING = CompressSetting{CoordQ: 0, CoordBits: 14, NormalBits: 10, ColorBits: [4]int{6, 6, 6, 5}, TexStep: 0.25, UvBits: 11}
 )
 
 func CompressNode(header Header, node *Node, mesh *NodeMesh, patches []Patch, setting *CompressSetting) NodeData {
@@ -264,7 +264,7 @@ func decompressNodeMesh(buf []byte, header Header, node *Node, mesh *NodeMesh) e
 
 				mesh.Texcoords = make([]vec2.T, node.NVert)
 
-				var texsSlice []byte
+				var texsSlice []float32
 				texsHeader := (*reflect.SliceHeader)((unsafe.Pointer(&texsSlice)))
 				texsHeader.Cap = int(node.NVert * 2)
 				texsHeader.Len = int(node.NVert * 2)
@@ -286,8 +286,8 @@ func compressNodeMesh(header Header, node *Node, mesh *NodeMesh, patches []Patch
 			ctx.VertexBits = setting.CoordBits
 		}
 		ctx.NormBits = setting.NormalBits
-		ctx.UvBits = float32(setting.UvBits) / 512
-		ctx.ColorBits = [4]int{setting.ColorBits, setting.ColorBits, setting.ColorBits, setting.ColorBits}
+		ctx.UvBits = setting.TexStep / 512
+		ctx.ColorBits = setting.ColorBits
 
 		geom := &corto.Geom{}
 
@@ -334,10 +334,10 @@ func compressNodeMesh(header Header, node *Node, mesh *NodeMesh, patches []Patch
 			enc.SetAttributeQuantization(draco.GAT_NORMAL, int32(setting.NormalBits))
 		}
 		if setting.UvBits > 0 {
-			enc.SetAttributeQuantization(draco.GAT_TEX_COORD, int32(setting.UvBits))
+			//enc.SetAttributeQuantization(draco.GAT_TEX_COORD, int32(setting.UvBits))
 		}
-		if setting.ColorBits > 0 {
-			enc.SetAttributeQuantization(draco.GAT_COLOR, int32(setting.ColorBits))
+		if setting.ColorBits[0] > 0 {
+			enc.SetAttributeQuantization(draco.GAT_COLOR, int32(setting.ColorBits[0]))
 		}
 
 		if node.NFace == 0 {
@@ -406,7 +406,7 @@ func compressNodeMesh(header Header, node *Node, mesh *NodeMesh, patches []Patch
 				builder.SetAttribute(size, face_colors[:], draco.GAT_COLOR)
 			}
 			if sig.Vertex.HasTextures() {
-				builder.SetAttribute(size, face_texcoords[:], draco.GAT_COLOR)
+				builder.SetAttribute(size, face_texcoords[:], draco.GAT_TEX_COORD)
 			}
 
 			mesh := builder.GetMesh()

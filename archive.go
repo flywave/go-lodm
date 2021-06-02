@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path"
 )
@@ -36,7 +37,9 @@ type Archive struct {
 }
 
 func NewArchive(h Header, setting *CompressSetting) *Archive {
-	return &Archive{Header: h, setting: setting}
+	a := &Archive{Header: h, setting: &CompressSetting{}}
+	a.optimizeCompressSetting(setting)
+	return a
 }
 
 func (a *Archive) headerSize() int {
@@ -891,6 +894,41 @@ func (a *Archive) LoadInstance(n uint32) error {
 	return nil
 }
 
-func (a *Archive) optimizeCompressSetting() {
+const (
+	CoordStep  float32 = 0.0
+	LumaBits   int     = 6
+	ChromaBits int     = 6
+	AlphaBits  int     = 5
+	NormBits   int     = 10
+	TexStep    float32 = 0.25
+)
 
+func (a *Archive) optimizeCompressSetting(s *CompressSetting) {
+	if !a.Header.Sign.IsCompressed() {
+		return
+	}
+	coordStep := CoordStep
+	if s != nil {
+		if s.CoordBits > 0 {
+			sphere := &a.Header.Sphere
+			coordStep = sphere.Radius() / float32(math.Pow(2.0, float64(s.CoordBits)))
+		}
+	}
+
+	a.setting.CoordQ = float32(math.Log2(float64(coordStep)))
+
+	if s != nil {
+		a.setting.NormalBits = s.NormalBits
+		a.setting.ColorBits = s.ColorBits
+		a.setting.TexStep = s.TexStep
+		a.setting.UvBits = s.UvBits
+	} else {
+		a.setting.NormalBits = NormBits
+		a.setting.ColorBits[0] = LumaBits
+		a.setting.ColorBits[1] = ChromaBits
+		a.setting.ColorBits[2] = ChromaBits
+		a.setting.ColorBits[3] = AlphaBits
+		a.setting.TexStep = TexStep
+		a.setting.UvBits = int(math.Log2(float64(512 / TexStep)))
+	}
 }

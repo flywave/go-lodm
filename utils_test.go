@@ -291,7 +291,39 @@ var (
 	}
 )
 
-func TestCompressDecompressMesh(t *testing.T) {
+func TestDracoMesh(t *testing.T) {
+	sign := &Signature{}
+
+	sign.Vertex.SetComponent(VERTEX_COORD, Attribute{Type: ATTR_FLOAT, Number: 3})
+	sign.Vertex.SetComponent(VERTEX_TEX, Attribute{Type: ATTR_FLOAT, Number: 2})
+
+	sign.Face.SetComponent(FACE_INDEX, Attribute{Type: ATTR_UNSIGNED_SHORT, Number: 3})
+
+	sign.SetFlag(DRACO)
+
+	h := NewHeader(*sign)
+
+	node := &Node{NVert: uint16(len(testMesh2.Verts)), NFace: uint16(len(testMesh2.Faces))}
+
+	data := CompressNode(*h, node, &testMesh2, nil, &DEFAULE_COMPRESS_SETTING)
+
+	if len(data) == 0 {
+		t.FailNow()
+	}
+
+	var mesh NodeMesh
+	err := decompressNodeMesh(data, *h, node, &mesh)
+
+	if err != nil {
+		t.FailNow()
+	}
+
+	if len(mesh.Faces) != len(testMesh2.Faces) {
+		t.FailNow()
+	}
+}
+
+func TestCortoMesh(t *testing.T) {
 	sign := &Signature{}
 
 	sign.Vertex.SetComponent(VERTEX_COORD, Attribute{Type: ATTR_FLOAT, Number: 3})
