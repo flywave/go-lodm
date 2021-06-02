@@ -12,7 +12,8 @@ import (
 )
 
 const (
-	LM_PADDING uint32 = 256
+	LM_PADDING    uint32 = 256
+	LM_INVALID_ID uint32 = 0xffffffff
 )
 
 var byteorder = binary.LittleEndian
@@ -73,8 +74,7 @@ func (a *Archive) countRoots() {
 }
 
 func (a *Archive) loadHeader() error {
-	err := a.Header.Read(a.reader)
-	return err
+	return a.Header.Read(a.reader)
 }
 
 func (a *Archive) loadIndex() error {
@@ -262,7 +262,7 @@ func (a *Archive) readPatchTexture(p uint32) ([]byte, error) {
 
 func (a *Archive) setPatchTexture(p uint32, buf []byte) error {
 	t := a.Patchs[p].TexID
-	if t == 0xffffffff {
+	if t == LM_INVALID_ID {
 		return nil
 	}
 	var err error
@@ -557,10 +557,10 @@ func (a *Archive) Extract(path_ string) error {
 
 func (a *Archive) extractInstanceNodeTexture(path_ string, n uint32) error {
 	first_patch, last_patch := a.getInstanceNodePatchRange(n)
-	t := uint32(0xffffffff)
+	t := LM_INVALID_ID
 	for p := first_patch; p < last_patch; p++ {
 		t_ := a.Patchs[p].TexID
-		if t_ == 0xffffffff || t_ == t {
+		if t_ == LM_INVALID_ID || t_ == t {
 			continue
 		}
 		t = t_
@@ -586,10 +586,10 @@ func (a *Archive) extractInstanceNodeTexture(path_ string, n uint32) error {
 
 func (a *Archive) extractNodeTexture(path_ string, n uint32) error {
 	first_patch, last_patch := a.getNodePatchRange(n)
-	t := uint32(0xffffffff)
+	t := LM_INVALID_ID
 	for p := first_patch; p < last_patch; p++ {
 		t_ := a.Patchs[p].TexID
-		if t_ == 0xffffffff || t_ == t {
+		if t_ == LM_INVALID_ID || t_ == t {
 			continue
 		}
 		t = t_
@@ -667,7 +667,7 @@ func (a *Archive) genNodeObj(n uint32, instance bool) string {
 			t := a.Patchs[p].TexID
 			m := a.Patchs[p].MtlID
 
-			if t != 0xffffffff || m != 0xffffffff {
+			if t != LM_INVALID_ID || m != LM_INVALID_ID {
 				if instance {
 					buffer.WriteString(fmt.Sprintf("usemtl instance_%v_%v_%v\n", n, t, m))
 				} else {
@@ -744,7 +744,7 @@ func (a *Archive) genNodeMtl(n uint32, instance bool) string {
 		t := a.Patchs[p].TexID
 		m := a.Patchs[p].MtlID
 
-		if t == 0xffffffff || m == 0xffffffff {
+		if t == LM_INVALID_ID || m == LM_INVALID_ID {
 			continue
 		}
 		if instance {
@@ -752,7 +752,7 @@ func (a *Archive) genNodeMtl(n uint32, instance bool) string {
 		} else {
 			buffer.WriteString(fmt.Sprintf("newmtl node_%v_%v_%v\n", n, t, m))
 		}
-		if m != 0xffffffff {
+		if m != LM_INVALID_ID {
 			mat := a.Materials[m]
 
 			buffer.WriteString(fmt.Sprintf("Kd %v %v %v \n", mat.Color[0]/255, mat.Color[1]/255, mat.Color[2]/255))
@@ -776,7 +776,7 @@ func (a *Archive) genNodeMtl(n uint32, instance bool) string {
 			buffer.WriteString("illum 2\n")
 			buffer.WriteString("Ns 8.000000\n")
 		}
-		if t != 0xffffffff {
+		if t != LM_INVALID_ID {
 			if instance {
 				buffer.WriteString(fmt.Sprintf("map_Kd instance_%v_%v_tex.jpg \n", n, t))
 			} else {
