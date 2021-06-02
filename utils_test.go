@@ -321,5 +321,4 @@ func TestCompressDecompressMesh(t *testing.T) {
 	if len(mesh.Faces) != len(testMesh2.Faces) {
 		t.FailNow()
 	}
-
 }

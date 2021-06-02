@@ -100,7 +100,7 @@ type CompressSetting struct {
 }
 
 var (
-	DEFAULE_COMPRESS_SETTING = CompressSetting{CoordQ: 0, CoordBits: 0, NormalBits: 10, ColorBits: 6, AlphaBits: 5}
+	DEFAULE_COMPRESS_SETTING = CompressSetting{CoordQ: 0, CoordBits: 1, NormalBits: 10, ColorBits: 6, AlphaBits: 5, UvBits: 1}
 )
 
 func CompressNode(header Header, node *Node, mesh *NodeMesh, patches []Patch, setting *CompressSetting) NodeData {

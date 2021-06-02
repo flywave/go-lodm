@@ -890,3 +890,7 @@ func (a *Archive) LoadInstance(n uint32) error {
 	}
 	return nil
 }
+
+func (a *Archive) optimizeCompressSetting() {
+
+}
