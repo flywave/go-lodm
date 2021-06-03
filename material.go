@@ -19,8 +19,8 @@ const (
 )
 
 type Material struct {
-	Type               uint32
-	Mode               uint32
+	Type               uint16
+	Mode               uint16
 	Color              [3]byte
 	Ambient            [3]byte
 	Emissive           [3]byte

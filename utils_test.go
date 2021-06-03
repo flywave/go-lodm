@@ -1,6 +1,8 @@
 package lodm
 
 import (
+	"encoding/binary"
+	"fmt"
 	"image"
 	"image/color"
 	"testing"
@@ -353,4 +355,19 @@ func TestCortoMesh(t *testing.T) {
 	if len(mesh.Faces) != len(testMesh2.Faces) {
 		t.FailNow()
 	}
+}
+
+func TestSize(t *testing.T) {
+	si := binary.Size(Patch{})
+	fmt.Printf("Patch-Size: %v", si)
+	si = binary.Size(Node{})
+	fmt.Printf("Node-Size: %v", si)
+	si = binary.Size(Instance{})
+	fmt.Printf("Instance-Size: %v", si)
+	si = binary.Size(Material{})
+	fmt.Printf("Material-Size: %v", si)
+	si = binary.Size(Texture{})
+	fmt.Printf("Texture-Size: %v", si)
+	si = binary.Size(Feature{})
+	fmt.Printf("Feature-Size: %v", si)
 }
