@@ -334,7 +334,7 @@ func compressNodeMesh(header Header, node *Node, mesh *NodeMesh, patches []Patch
 			enc.SetAttributeQuantization(draco.GAT_NORMAL, int32(setting.NormalBits))
 		}
 		if setting.UvBits > 0 {
-			//enc.SetAttributeQuantization(draco.GAT_TEX_COORD, int32(setting.UvBits))
+			enc.SetAttributeQuantization(draco.GAT_TEX_COORD, int32(setting.UvBits))
 		}
 		if setting.ColorBits[0] > 0 {
 			enc.SetAttributeQuantization(draco.GAT_COLOR, int32(setting.ColorBits[0]))
